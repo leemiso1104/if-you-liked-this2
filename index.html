@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>If You Liked This</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Instrument+Serif:ital@0;1&family=Hahmlet:wght@500;700&family=Noto+Serif+KR:wght@700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+<style>
+        :root{
+                --bg: #FFD828;
+                --ink: #121212;
+                --mute: #6d6c68;
+        }
+        html, body{ margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+        body{
+                color: var(--ink);
+                font-family: "Hahmlet", sans-serif;
+                user-select: none;
+                -webkit-font-smoothing: antialiased;
+        }
+        #world{ position: fixed; inset: 0; touch-action: none; cursor: default; }
+        #world.drag{ cursor: grabbing; }
+        #films{ position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+        #hypha{ position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+
+        .film{
+                position: absolute; left: 0; top: 0;
+                transform-origin: 0 0;
+                pointer-events: auto;
+                cursor: pointer;
+                will-change: transform;
+        }
+        .film:not(.found){ cursor: default; }   /* 아직 드러나지 않은 카드는 기본 커서 */
+
+        .film img{
+                display: block; width: 100%; height: 100%;
+                object-fit: cover;          /* 비율을 지키면서 카드를 꽉 채움 (넘치는 부분은 잘림) */
+                transition: filter 0.9s ease, opacity 0.9s ease;
+                box-shadow: 0 18px 40px rgba(0,0,0,0.12);
+        }
+        .film .reveal{
+                position: absolute; inset: 0;
+                width: 100%; height: 100%;
+                pointer-events: none;
+                transition: opacity 1.2s ease;
+        }
+        .film.found .reveal{ opacity: 0; }
+        .film .cap{
+                position: absolute; left: 0; top: 100%;
+                margin-top: 6px;
+                white-space: nowrap;
+                font-family: "Barlow Condensed", sans-serif;
+                font-weight: 500;
+                font-size: 11px;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--mute);
+                opacity: 0;
+                transition: opacity 0.6s;
+        }
+        .film .cap i{
+                font-family: "Hahmlet", serif;
+                font-style: italic;
+                font-size: 15px;
+                letter-spacing: 0;
+                text-transform: none;
+                color: var(--ink);
+                margin-left: 6px;
+        }
+        .film.found .cap{ opacity: 1; }
+
+        /* 화면 고정 UI */
+        .ui{ position: fixed; z-index: 10; }
+        #brand{
+                top: 18px; left: 50%;
+                transform: translateX(-50%);
+                text-align: center;
+                white-space: nowrap;
+                pointer-events: none;
+        }
+        #brand .t{
+                font-family: "Barlow Condensed", sans-serif; font-weight: 600;
+                font-size: 34px; letter-spacing: 0.02em; text-transform: uppercase; line-height: 1;
+        }
+        #brand .k{ font-family: "Hahmlet", serif; font-style: italic; font-size: 32px; text-transform: none; }
+        #brand .s{ font-size: 14px; color: var(--mute); margin-top: 6px; }
+
+        #nav{ top: 16px; right: 30px; display: flex; gap: 18px; }
+        #nav button{
+                background: none; border: 0; padding: 4px 0; cursor: pointer;
+                font-family: "Barlow Condensed", sans-serif; font-weight: 500;
+                font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase;
+                color: var(--ink);
+        }
+
+        #legend{ left: 20px; bottom: 18px; }
+        #legend .row{ display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 3px 0; }
+        #legend .sw{ width: 22px; height: 2px; background: var(--ink); }
+        #legend .n{ font-family: "Barlow Condensed", sans-serif; color: var(--mute); font-size: 12px; }
+
+        #hint{
+                right: 20px; bottom: 18px; text-align: right;
+                font-size: 11px; color: var(--mute); line-height: 1.7;
+                pointer-events: none; transition: opacity 1s;
+        }
+
+        /* 상세 화면 */
+        #panel{
+                position: fixed; inset: 0; z-index: 20;
+                background: #0b0b0b; color: #eeece6;
+                display: grid; grid-template-columns: minmax(320px, 40%) 1fr;
+                opacity: 0; pointer-events: none;
+                transition: opacity 0.55s ease;
+        }
+        #panel.open{ opacity: 1; pointer-events: auto; }
+        #panel .left{
+                padding: 22px 28px 26px;
+                display: flex; flex-direction: column;
+                overflow-y: auto;
+                background-size: cover;          
+                background-position: center;    
+                }
+        #panel .top{ display: flex; justify-content: space-between; align-items: baseline; }
+        #panel .top .b{ font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 18px; text-transform: uppercase; }
+        #panel .top button{
+                background: none; border: 0; color: #eeece6; cursor: pointer;
+                font-family: "Barlow Condensed", sans-serif; font-size: 14px; letter-spacing: 0.06em;
+        }
+        #panel .top button:hover{ font-family: "Hahmlet", serif; font-style: italic; font-size: 17px; letter-spacing: 0; }
+        #panel .title{ margin-top: auto; padding-top: 40px; }
+        #panel h2{
+        font-family: "Hahmlet", serif; font-weight: 700;
+        font-size: clamp(32px, 4.2vw, 56px); line-height: 1.1; margin: 0;
+        }
+        #panel .en{ font-family: "Hahmlet", serif; font-style: italic; font-size: 24px; margin-top: 4px; color: #bdbab2; }
+        #panel .meta{
+                font-family: "Barlow Condensed", sans-serif; font-size: 13px; letter-spacing: 0.06em;
+                text-transform: uppercase; color: #8e8b84; margin-top: 12px;
+        }
+        #panel .tech{ margin-top: 28px; border-top: 1px solid rgba(238,236,230,0.15); padding-top: 14px; }
+        #panel .tech .tn{
+                font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 14px;
+                letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; gap: 10px;
+        }
+        #panel .tech .tn .sw{ width: 22px; height: 2px; background: #eeece6; }
+        #panel .tech .tn em{ font-family: "Hahmlet", serif; font-weight: 400; font-size: 17px; letter-spacing: 0; text-transform: none; }
+        #panel .tech .td{ font-size: 13px; color: #a9a69e; line-height: 1.6; margin-top: 6px; }
+        #panel .note{ font-family: "Hahmlet", serif; font-size: 15px; line-height: 1.7; margin-top: 22px; max-width: 34em; }
+        #panel .rel{ margin-top: 10px; }
+        #panel .rel button{
+                display: flex; justify-content: space-between; width: 100%;
+                background: none; border: 0; border-bottom: 1px solid rgba(238,236,230,0.08);
+                color: #eeece6; padding: 7px 0; cursor: pointer; text-align: left;
+                font-family: "Hahmlet", sans-serif; font-size: 14px;
+        }
+        #panel .rel button span:last-child{ font-family: "Barlow Condensed", sans-serif; color: #8e8b84; }
+        #panel .rel button:hover span:first-child{ font-family: "Instrument Serif", serif; font-style: italic; font-size: 17px; }
+        #panel .foot{ font-size: 10px; color: #6b6963; margin-top: 26px; letter-spacing: 0.04em; }
+
+        #panel .right{ position: relative; overflow: hidden; background: #000; }
+        #panel .right .bg{
+                position: absolute; inset: -60px;
+                background-size: cover; background-position: center;
+                filter: blur(40px) brightness(0.7);
+                transform: scale(1.1);
+        }
+        #panel .right img{
+                position: absolute; left: 50%; top: 50%;
+                max-width: 82%; max-height: 72%;
+                transform: translate(-50%, -50%);
+                box-shadow: 0 30px 80px rgba(0,0,0,0.45);
+        }
+
+        /* ★ 영상: 칸을 꽉 채움 (비율 유지, 넘치는 부분은 잘림) */
+        #panel .right video{
+                position: absolute; inset: 0;
+                width: 100%; height: 100%;
+                object-fit: cover;
+                display: none;
+        }
+        /* ★ 영상 위를 덮는 투명한 링크 — 클릭하면 유튜브로 */
+        #panel .right a{ position: absolute; inset: 0; display: none; cursor: pointer; }
+
+        /* ★ 영상이 있는 영화일 때: 영상을 켜고 이미지와 배경은 끔 */
+        #panel.video .right video{ display: block; }
+        #panel.video .right .bg,
+        #panel.video .right img{ display: none; }
+        /* ★ 유튜브 주소(yt)가 있을 때만 클릭 링크를 켬 */
+        #panel.link .right a{ display: block; }
+
+        @media (max-width: 860px){
+                #panel{ grid-template-columns: 1fr; grid-template-rows: 38vh 1fr; }
+                #panel .right{ grid-row: 1; }
+                #panel .left{ grid-row: 2; }
+                #legend{ display: none; }
+                #hint{ display: none; }
+                #brand{ top: 52px; }
+        }
+        @media (prefers-reduced-motion: reduce){
+                .film img, #panel{ transition: none; }
+        }
+</style>
+</head>
+<body>
+
+<div id="world">
+        <div id="films"></div>
+        <canvas id="hypha"></canvas>
+</div>
+
+<div id="brand" class="ui">
+        <div class="t">If You <span class="k">Liked</span> This</div>
+        <div class="s">당신이 이 영화를 좋아한다면</div>
+</div>
+
+<div id="nav" class="ui">
+        <button onclick="restart()">Retry</button>
+</div>
+
+<div id="legend" class="ui"></div>
+
+<div id="hint" class="ui">
+        마우스를 올려두면 균사가 자라납니다<br>
+        누른 채로 끌어 영화를 이어보세요
+</div>
+
+<div id="panel">
+        <div class="left" id="panelLeft"></div>
+        <div class="right">
+                <div class="bg" id="panelBg"></div>
+                <img id="panelImg" alt="">
+                <video id="panelVideo" playsinline loop preload="auto"></video>                  <!-- ★ 영상 -->
+                <a id="panelLink" target="_blank" rel="noopener"></a>                                <!-- ★ 클릭하면 유튜브로 -->
+        </div>
+</div>
+
+<script>
+/* ============================================================
+   1. 데이터 — 기법과 영화
+   ============================================================ */
+
+const TECH = {
+        en: "Rashomon Structure", ko: "엇갈리는 시점",
+        desc: "같은 사건을 여러 인물의 시점이나 진술로 다시 보여주는 구성. 무엇이 진실인지는 관객이 맞춰야 한다."
+};
+
+// x, y: 월드 위치 / d: 깊이 (작을수록 멀리 있음) / ratio: 화면비
+// ★ video: 영상 파일 이름 (index.html과 같은 폴더에 둠, 예: "monster.mp4") — 비워두면 이미지로 보여줌
+// ★ start: 영상 시작 지점(초)
+// ★ yt: 클릭했을 때 넘어갈 유튜브 영상 ID (주소의 watch?v= 뒤) — 비워두면 클릭해도 아무 일 없음
+const FILMS = [
+        { id: "rashomon", ko: "라쇼몽", en: "Rashomon", year: 1950, dir: "구로사와 아키라", nat: "일본", x: -1250, y: 140, d: 0.46, ratio: 1.37, img: "rashomon.jpg",
+          video: "rashomon.mp4", start: 0, yt: "xCZ9TguVOIA", bg: "rashomon_bg.jpg",
+          note: "숲속에서 벌어진 사건을 산적, 아내, 죽은 무사(무당을 통해), 나무꾼이 서로 다르게 증언한다. 누구의 말이 맞는지 영화는 끝내 판정하지 않는다." },
+
+        { id: "monster", ko: "괴물", en: "Monster", year: 2023, dir: "고레에다 히로카즈", nat: "일본", x: 0, y: 0, d: 1.55, ratio: 1.85, img: "monster.jpg",
+          video: "monster.mp4", start: 0, yt: "BHaPyxWrP_g", bg: "monster_bg.jpg",
+          note: "같은 사건을 엄마, 담임교사, 두 아이의 시점으로 세 번 보여준다. 앞 시점의 판단이 다음 시점에서 오해였음이 드러난다." },
+
+        { id: "anatomy", ko: "추락의 해부", en: "Anatomy of a Fall", year: 2023, dir: "쥐스틴 트리에", nat: "프랑스", x: 600, y: -400, d: 0.86, ratio: 2.39, img: "anatomy.jpg",
+          video: "anatomy.mp4", start: 0, yt: "VMBCqyg2qZ8", bg: "anatomy_bg.jpg",
+          note: "남편의 추락사를 두고 법정에서 엇갈리는 진술과 증거가 맞선다. 진실은 밝혀지지 않고, 믿음을 선택하는 문제로 남는다." },
+
+        { id: "jsa", ko: "공동경비구역 JSA", en: "Joint Security Area", year: 2000, dir: "박찬욱", nat: "한국", x: 860, y: 560, d: 0.64, ratio: 2.39, img: "jsa.jpg",
+          video: "jsa.mp4", start: 0, yt: "r5PxsfihklQ", bg: "jsa_bg.jpg",
+          note: "판문점 총격 사건을 두고 남북 병사의 진술이 엇갈린다. 회상으로 실제 사건이 드러나지만, 그 진실은 기록에 남을 수 없다." }
+];
+
+
+/* ============================================================
+   2. 설정값 — 숫자를 바꿔 느낌을 조절할 수 있음
+   ============================================================ */
+
+const PULL = 0.018;                      // 호버한 카드 쪽으로 끌려가는 속도 (클수록 빨리)
+const PULL_TO = 0.55;                    // 얼마나 끌려갈지 (1이면 카드가 화면 정중앙까지 옴)
+
+// 균사
+const HYPHA = {
+        speed: 2.4,          // 한 프레임에 자라는 길이(px)
+        branch: 0.012,       // 갈라질 확률
+        maxTips: 70,         // 동시에 자라는 끝의 최대 수
+        maxPoints: 70000,    // 남겨둘 균사 점의 최대 수 (넘으면 가장 오래된 것부터 지움)
+        hoverRate: 6,        // 호버 중 몇 프레임마다 새 균사가 돋는지
+        reach: 150,          // 드래그할 때 이 거리 안에 균사가 있어야 끌려옴(px)
+        young: 40,           // 갓 자란 균사가 진하게 보이는 시간(프레임)
+        fade: 160,           // 진한 균사가 흐려지는 데 걸리는 시간(프레임)
+        floor: 0.10          // 오래된 균사가 남는 진하기 (0이면 완전히 사라짐)
+};
+
+// 카드가 드러나는 정도
+const REVEAL = {
+        paint: 0.5,          // 한 번 지나갈 때 긁히는 진하기 (1이면 한 번에 완전히 선명)
+        width: 0.07,         // 긁힌 자국 굵기 (카드 폭 대비)
+        done: 0.35           // 이만큼 긁히면 카드 전체가 드러남
+};
+
+
+/* ============================================================
+   3. 상태 — 화면 요소와 지금 상황을 담는 변수
+   ============================================================ */
+
+const world = document.getElementById("world");
+const canvas = document.getElementById("hypha");
+const ctx = canvas.getContext("2d");
+const filmLayer = document.getElementById("films");
+const hint = document.getElementById("hint");
+const legend = document.getElementById("legend");
+const panel = document.getElementById("panel");
+const panelLeft = document.getElementById("panelLeft");
+const panelImg = document.getElementById("panelImg");
+const panelBg = document.getElementById("panelBg");
+const panelVideo = document.getElementById("panelVideo");   // ★ 영상
+const panelLink = document.getElementById("panelLink");     // ★ 유튜브 링크
+
+let W = innerWidth, H = innerHeight, dpr = 1;
+
+const film = {};
+
+let cam = { x: 0, y: 0, z: 1 };          // 지금 카메라
+let base = { x: 0, y: 0, z: 1 };         // 기본 카메라 위치
+let fly = null;                          // 날아 들어가는 중인 목표
+let hovered = null;
+let openFilm = null;
+let mouse = { x: W / 2, y: H / 2 };
+let drift = { x: 0, y: 0 };
+let press = null;                        // 누르고 있는 상태
+let frame = 0;
+
+let paths = [];     // 지금까지 자란 균사들
+let tips = [];      // 지금 자라고 있는 끝
+let pointCount = 0;
+
+
+/* ============================================================
+   4. 영화 카드
+   카드 = 흐린 이미지 + 균사가 지나간 자리만 선명하게 보이는 층
+   ============================================================ */
+
+function buildFilms(){
+        FILMS.forEach(f => {
+                film[f.id] = f;
+                f.w = 230 * Math.sqrt(1.85 / f.ratio) * 1.05;
+                f.h = f.w / f.ratio;
+                f.src = f.img;
+                f.found = false;
+
+                const el = document.createElement("div");
+                el.className = "film";
+                el.style.width = f.w + "px";
+                el.style.height = f.h + "px";
+                el.style.zIndex = Math.round(f.d * 100);
+                el.innerHTML = "<img alt='' src='" + f.src + "'><canvas class='reveal'></canvas><div class='cap'>" + f.year + "<i>" + f.ko + "</i></div>";
+                filmLayer.appendChild(el);
+                f.el = el;
+                f.pic = el.querySelector("img");
+
+                // 드러나는 층: 마스크(균사가 지나간 자리) + 선명한 이미지
+                f.mw = 300;
+                f.mh = Math.round(300 / f.ratio);
+                f.mask = document.createElement("canvas");
+                f.mask.width = f.mw; f.mask.height = f.mh;
+                f.mctx = f.mask.getContext("2d");
+                f.rev = el.querySelector(".reveal");
+                f.rev.width = f.mw * 2; f.rev.height = f.mh * 2;
+                f.rctx = f.rev.getContext("2d");
+                f.dirty = false;
+
+                el.addEventListener("pointerenter", () => onHover(f));
+                el.addEventListener("pointerleave", () => { if(hovered == f) hovered = null; });
+                el.addEventListener("click", () => {
+                        if(press && press.moved) return;
+                        if(f.found) flyTo(f);
+                });
+        });
+}
+
+// 초점: 아직 드러나지 않은 영화는 알아볼 수 없을 만큼 흐리게
+function setFocus(f){
+        const far = Math.max(0, 1.2 - f.d);
+        f.pic.style.filter = f.found ? "blur(" + (far * 2).toFixed(1) + "px)" : "blur(" + (12 + far * 10).toFixed(1) + "px) grayscale(0.6)";
+        f.pic.style.opacity = f.found ? 1 : 0.55;
+}
+
+function onHover(f){
+        if(openFilm || fly) return;
+        hovered = f;
+        hint.style.opacity = 0;
+}
+
+function discover(f){
+        if(f.found) return;
+        f.found = true;
+        f.el.classList.add("found");
+        setFocus(f);
+        updateLegend();
+}
+
+// 균사가 카드 위를 지나가면 이전 점 → 다음 점을 선으로 긁어냄
+function paintMask(f, ax, ay, bx, by){
+        const w = f.w * f.ss, h = f.h * f.ss;
+        const left = f.sx - w / 2, top = f.sy - h / 2;
+        const u0 = (ax - left) / w, v0 = (ay - top) / h;
+        const u1 = (bx - left) / w, v1 = (by - top) / h;
+        if((u0 < 0 && u1 < 0) || (u0 > 1 && u1 > 1) || (v0 < 0 && v1 < 0) || (v0 > 1 && v1 > 1)) return false;
+        const g = f.mctx;
+        g.strokeStyle = "rgba(0,0,0," + REVEAL.paint + ")";
+        g.lineWidth = f.mw * REVEAL.width;
+        g.lineCap = "round";
+        g.beginPath();
+        g.moveTo(u0 * f.mw, v0 * f.mh);
+        g.lineTo(u1 * f.mw, v1 * f.mh);
+        g.stroke();
+        f.dirty = true;
+        return true;
+}
+
+// 이미지를 비율 그대로 칸에 꽉 채워 그림 (CSS의 object-fit: cover와 같은 방식)
+function drawCover(g, img, w, h){
+        const iw = img.naturalWidth, ih = img.naturalHeight;
+        if(!iw) return;
+        const s = Math.max(w / iw, h / ih);
+        const cw = w / s, ch = h / s;
+        g.drawImage(img, (iw - cw) / 2, (ih - ch) / 2, cw, ch, 0, 0, w, h);
+}
+
+function updateReveals(){
+        FILMS.forEach(f => {
+                if(f.found || !f.dirty) return;
+                if(frame % 3 == 0){
+                        const g = f.rctx;
+                        g.globalCompositeOperation = "source-over";
+                        g.clearRect(0, 0, f.rev.width, f.rev.height);
+                        g.drawImage(f.mask, 0, 0, f.rev.width, f.rev.height);
+                        g.globalCompositeOperation = "source-in";
+                        drawCover(g, f.pic, f.rev.width, f.rev.height);   // 필터는 그림에 영향 없음
+                        g.globalCompositeOperation = "source-over";
+                }
+                // 얼마나 드러났는지 확인 — REVEAL.done 비율 이상 덮이면 전체가 드러남
+                if(frame % 24 == 0){
+                        const data = f.mctx.getImageData(0, 0, f.mw, f.mh).data;
+                        let on = 0, all = 0;
+                        for(let i = 3 ; i < data.length ; i += 16){ all++; if(data[i] > 110) on++; }
+                        if(on / all > REVEAL.done){ discover(f); }
+                        f.dirty = false;
+                }
+        });
+}
+
+
+/* ============================================================
+   5. 균사 — 끝이 계속 자라고 갈라지며, 지나간 자리는 약하게 남음
+   점은 월드 좌표 + 깊이로 저장해서 카메라가 움직여도 제자리에 붙어 있음
+   ============================================================ */
+
+// 화면의 한 점이 어느 깊이에 있는지 — 가까운 카드의 깊이를 따라감
+function depthAt(sx, sy){
+        let ws = 0, ds = 0;
+        FILMS.forEach(f => {
+                const d2 = (f.sx - sx) * (f.sx - sx) + (f.sy - sy) * (f.sy - sy);
+                const w = 1 / (d2 + 3000);
+                ws += w; ds += w * f.d;
+        });
+        return ds / ws;
+}
+
+function toWorld(sx, sy, d){
+        return {
+                x: cam.x + (sx - W / 2 + drift.x * d) / (cam.z * d),
+                y: cam.y + (sy - H / 2 + drift.y * d) / (cam.z * d)
+        };
+}
+
+function toScreen(x, y, d){
+        return {
+                x: W / 2 + (x - cam.x) * cam.z * d - drift.x * d,
+                y: H / 2 + (y - cam.y) * cam.z * d - drift.y * d
+        };
+}
+
+function addPoint(path, sx, sy){
+        const d = depthAt(sx, sy);
+        const p = toWorld(sx, sy, d);
+        path.x.push(p.x); path.y.push(p.y); path.d.push(d); path.b.push(frame);
+        path.sx.push(sx); path.sy.push(sy);
+        pointCount++;
+}
+
+function newTip(sx, sy, ang, life, target, owner){
+        if(tips.length >= HYPHA.maxTips) return;
+        const path = { x: [], y: [], d: [], b: [], sx: [], sy: [], owner: owner };
+        addPoint(path, sx, sy);
+        paths.push(path);
+        if(owner){ owner.owned.push(path); if(owner.owned.length > 600) owner.owned.shift(); }
+        tips.push({ path: path, ang: ang, life: life, target: target, owner: owner });
+}
+
+// 점이 너무 많아지면 가장 오래된 균사부터 지움
+function trimPaths(){
+        if(pointCount <= HYPHA.maxPoints) return;
+        const gone = new Set();
+        while(pointCount > HYPHA.maxPoints * 0.9 && paths.length){
+                const p = paths.shift();
+                pointCount -= p.x.length;
+                gone.add(p);
+        }
+        tips = tips.filter(t => !gone.has(t.path));
+        FILMS.forEach(f => { f.owned = f.owned.filter(p => !gone.has(p)); });
+}
+
+// 카드에 호버하고 있으면 균사가 돋아남 — 오래 대고 있을수록 이미 자란 균사 끝에서 바깥으로 계속 퍼짐
+function sproutFrom(f){
+        if(tips.length > HYPHA.maxTips * 0.6) return;
+        if(f.owned.length > 20 && Math.random() < 0.7){
+                const p = f.owned[Math.floor(Math.random() * f.owned.length)];
+                const n = p.sx.length - 1;
+                const x = p.sx[n], y = p.sy[n];
+                const out = Math.atan2(y - f.sy, x - f.sx);
+                newTip(x, y, out + (Math.random() - 0.5) * 1.0, 35 + Math.random() * 55, null, f);
+                return;
+        }
+        sproutEdge(f);
+}
+
+function sproutEdge(f){
+        const w = f.w * f.ss, h = f.h * f.ss;
+        const per = 2 * (w + h);
+        let d = Math.random() * per, x, y, out;
+        if(d < w){ x = f.sx - w / 2 + d; y = f.sy - h / 2; out = -Math.PI / 2; }
+        else if(d < w + h){ x = f.sx + w / 2; y = f.sy - h / 2 + d - w; out = 0; }
+        else if(d < 2 * w + h){ x = f.sx + w / 2 - (d - w - h); y = f.sy + h / 2; out = Math.PI / 2; }
+        else { x = f.sx - w / 2; y = f.sy + h / 2 - (d - 2 * w - h); out = Math.PI; }
+        newTip(x, y, out + (Math.random() - 0.5) * 1.2, 40 + Math.random() * 60, null, f);
+}
+
+// 드래그: 커서 가까이에 있는 균사에서 새 가지가 커서 쪽으로 끌려옴
+function pullToward(cx, cy){
+        let best = null, bd = HYPHA.reach * HYPHA.reach;
+        for(let k = paths.length - 1 ; k >= 0 ; k--){
+                const p = paths[k];
+                for(let i = p.sx.length - 1 ; i >= 0 ; i -= 2){
+                        const dx = p.sx[i] - cx, dy = p.sy[i] - cy;
+                        const d2 = dx * dx + dy * dy;
+                        if(d2 < bd){ bd = d2; best = [p.sx[i], p.sy[i]]; }
+                }
+        }
+        // 카드 위에서 눌렀다면 그 카드 테두리도 출발점이 될 수 있음
+        FILMS.forEach(f => {
+                if(!f.found) return;
+                const w = f.w * f.ss / 2, h = f.h * f.ss / 2;
+                const nx = Math.max(f.sx - w, Math.min(f.sx + w, cx));
+                const ny = Math.max(f.sy - h, Math.min(f.sy + h, cy));
+                const d2 = (nx - cx) * (nx - cx) + (ny - cy) * (ny - cy);
+                if(d2 < bd){ bd = d2; best = [nx, ny]; }
+        });
+        if(!best) return false;
+        const ang = Math.atan2(cy - best[1], cx - best[0]);
+        newTip(best[0], best[1], ang + (Math.random() - 0.5) * 0.8, 70 + Math.random() * 60, mouse, null);
+        return true;
+}
+
+function growTips(){
+        for(let i = tips.length - 1 ; i >= 0 ; i--){
+                const t = tips[i];
+                const p = t.path;
+                const n = p.sx.length - 1;
+                const cx = p.sx[n], cy = p.sy[n];
+
+                // 커서에 거의 닿으면 끌림을 풀고 제멋대로 퍼짐
+                if(t.target && (!press || Math.hypot(t.target.x - cx, t.target.y - cy) < 24)){ t.target = null; t.life = Math.min(t.life, 30); }
+                if(t.target){
+                        const want = Math.atan2(t.target.y - cy, t.target.x - cx);
+                        let diff = want - t.ang;
+                        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+                        t.ang += diff * 0.07;
+                }
+                t.ang += (Math.random() - 0.5) * 0.5;
+
+                const nx = cx + Math.cos(t.ang) * HYPHA.speed;
+                const ny = cy + Math.sin(t.ang) * HYPHA.speed;
+                if(pointCount >= HYPHA.maxPoints){ tips.splice(i, 1); continue; }
+                addPoint(p, nx, ny);
+                t.life--;
+
+                // 아직 드러나지 않은 카드 위를 지나가면 그 자리가 드러남
+                FILMS.forEach(f => { if(!f.found) paintMask(f, cx, cy, nx, ny); });
+
+                if(Math.random() < HYPHA.branch && tips.length < HYPHA.maxTips){
+                        const side = Math.random() < 0.5 ? -1 : 1;
+                        newTip(nx, ny, t.ang + side * (0.4 + Math.random() * 0.5), t.life * 0.7, t.target, t.owner);
+                }
+                if(t.life <= 0 || nx < -200 || ny < -200 || nx > W + 200 || ny > H + 200){ tips.splice(i, 1); }
+        }
+}
+
+function drawHyphae(){
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "round";
+
+        // 나이에 따라 진하기를 몇 단계로 나눠 한꺼번에 그림
+        const LEVELS = 6;
+        const buckets = [];
+        for(let k = 0 ; k < LEVELS ; k++){ buckets.push(new Path2D()); }
+
+        paths.forEach(p => {
+                const n = p.x.length;
+                for(let i = 0 ; i < n ; i++){
+                        const s = toScreen(p.x[i], p.y[i], p.d[i]);
+                        p.sx[i] = s.x; p.sy[i] = s.y;
+                }
+                for(let i = 1 ; i < n ; i++){
+                        const age = frame - p.b[i];
+                        let a;
+                        if(age < HYPHA.young) a = 1;
+                        else a = Math.max(0, 1 - (age - HYPHA.young) / HYPHA.fade);
+                        const k = Math.min(LEVELS - 1, Math.floor((1 - a) * LEVELS));
+                        buckets[k].moveTo(p.sx[i - 1], p.sy[i - 1]);
+                        buckets[k].lineTo(p.sx[i], p.sy[i]);
+                }
+        });
+
+        ctx.strokeStyle = "#151515";
+        for(let k = 0 ; k < LEVELS ; k++){
+                const a = 1 - k / (LEVELS - 1);
+                ctx.globalAlpha = HYPHA.floor + (0.45 - HYPHA.floor) * a;
+                ctx.lineWidth = 0.55 + 0.35 * a;
+                ctx.stroke(buckets[k]);
+        }
+        ctx.globalAlpha = 1;
+
+        // 누르고 있을 때 커서 표시 — 가까운 균사가 없으면 점선
+        if(press){
+                ctx.strokeStyle = "#151515";
+                ctx.globalAlpha = press.ok ? 0.55 : 0.25;
+                ctx.setLineDash(press.ok ? [] : [3, 4]);
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, 14, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 1;
+        }
+}
+
+
+/* ============================================================
+   6. 카메라와 화면 위치
+   ============================================================ */
+
+// 얼마나 끌려갈지 — 최대 PULL_TO까지, 단 모든 카드의 가운데가 화면 안에 남는 만큼만
+function pullAmount(f){
+        if(f.k != null) return f.k;
+        const m = 40;
+        for(let k = PULL_TO ; k > 0 ; k -= 0.02){
+                const ok = FILMS.every(g => {
+                        const x = W / 2 + (g.x - f.x * k) * base.z * g.d;
+                        const y = H / 2 + (g.y - f.y * k) * base.z * g.d;
+                        return x > m && x < W - m && y > m && y < H - m;
+                });
+                if(ok) return (f.k = k);
+        }
+        return (f.k = 0);
+}
+
+function updateCamera(){
+        let tx = base.x, ty = base.y, tz = base.z;
+
+        if(fly){
+                tx = fly.x; ty = fly.y; tz = fly.z;
+        } else if(hovered && hovered.found && !press){
+                // 오픈 필드: 호버한 카드 쪽으로 화면이 끌려가고, 마우스를 떼도 그 자리에 머묾
+                const k = pullAmount(hovered);
+                base.x += (hovered.x * k - base.x) * PULL;
+                base.y += (hovered.y * k - base.y) * PULL;
+                tx = base.x; ty = base.y;
+                tz *= 1.05;
+        }
+
+        const ease = fly ? 0.075 : 0.05;
+        cam.x += (tx - cam.x) * ease;
+        cam.y += (ty - cam.y) * ease;
+        cam.z += (tz - cam.z) * ease;
+
+        // 마우스 위치에 따른 미세한 흔들림 (공간감)
+        const dx = fly ? 0 : (mouse.x - W / 2) * 0.05;
+        const dy = fly ? 0 : (mouse.y - H / 2) * 0.05;
+        drift.x += (dx - drift.x) * 0.05;
+        drift.y += (dy - drift.y) * 0.05;
+
+        if(fly && !openFilm){
+                const close = Math.abs(cam.x - fly.x) + Math.abs(cam.y - fly.y) < 4 && Math.abs(cam.z - fly.z) / fly.z < 0.03;
+                if(close || performance.now() - fly.t0 > 1300){ openPanel(fly.f); }
+        }
+}
+
+function placeFilms(){
+        FILMS.forEach(f => {
+                const p = toScreen(f.x, f.y, f.d);
+                const s = cam.z * f.d * (hovered == f && f.found ? 1.03 : 1);
+                const x = p.x - f.w * s / 2, y = p.y - f.h * s / 2;
+                f.el.style.transform = "translate3d(" + x.toFixed(1) + "px," + y.toFixed(1) + "px,0) scale(" + s.toFixed(4) + ")";
+                f.sx = p.x; f.sy = p.y; f.ss = s;
+        });
+}
+
+
+/* ============================================================
+   7. 날아 들어가기 / 상세 화면
+   ============================================================ */
+
+function flyTo(f){
+        if(openFilm) return;
+        discover(f);
+        const z = Math.min(5, (Math.min(W, H * f.ratio) * 0.62) / (f.w * f.d));
+        fly = { f: f, x: f.x, y: f.y, z: z, t0: performance.now() };
+        hovered = null;
+}
+
+function openPanel(f){
+        openFilm = f;
+        panelImg.src = f.src;
+        panelBg.style.backgroundImage = "url(" + f.src + ")";
+
+        panelLeft.style.backgroundImage =
+        "linear-gradient(rgba(11,11,11,0.75), rgba(11,11,11,0.75)), url(" + (f.bg || f.src) + ")";
+
+        if(f.video){
+                panelVideo.src = f.video + "#t=" + (f.start || 0);   // #t= 뒤 숫자(초)부터 재생
+                panelVideo.muted = false;
+                panelVideo.play().catch(() => {                      // 브라우저가 소리 재생을 막으면
+                        panelVideo.muted = true;                     // 소리를 끄고라도 재생
+                        panelVideo.play();
+                });
+                panel.classList.add("video");
+        } else {
+                stopVideo();
+                panel.classList.remove("video");
+        }
+        // ★ 유튜브 링크: yt가 있을 때만 클릭하면 유튜브로
+        if(f.yt){
+                panelLink.href = "https://www.youtube.com/watch?v=" + f.yt;
+                panel.classList.add("link");
+        } else {
+                panel.classList.remove("link");
+        }
+
+        const others = FILMS.filter(g => g != f).sort((a, b) => a.year - b.year);
+        const techHtml =
+                "<div class='tech'>" +
+                        "<div class='tn'><span class='sw'></span>" + TECH.en + " <em>" + TECH.ko + "</em></div>" +
+                        "<div class='td'>" + TECH.desc + "</div>" +
+                        "<div class='rel'>" + others.map(g => "<button onclick=\"jump('" + g.id + "')\"><span>" + g.ko + "</span><span>" + g.year + "</span></button>").join("") + "</div>" +
+                "</div>";
+
+        panelLeft.innerHTML =
+                "<div class='top'><div class='b'>If You Liked This</div><button onclick='closePanel()'>CLOSE</button></div>" +
+                "<div class='title'>" +
+                        "<h2>" + f.ko + "</h2>" +
+                        "<div class='en'>" + f.en + "</div>" +
+                        "<div class='meta'>" + f.year + " · " + f.dir + " · " + f.nat + "</div>" +
+                "</div>" +
+                "<div class='note'>" + f.note + "</div>" +
+                techHtml +
+                "<div class='foot'>영화들은 같은 기법을 공유한다는 기준으로 묶었으며 직접적인 영향 관계를 뜻하지 않음</div>";
+        panelLeft.scrollTop = 0;
+        panel.classList.add("open");
+}
+
+function closePanel(){
+        if(!openFilm) return;
+        const f = openFilm;
+        panel.classList.remove("open");
+        stopVideo();                             // ★ 영상: 닫으면 소리까지 끔
+        openFilm = null;
+        fly = null;
+
+        // 닫으면 모든 카드가 화면에 들어오는 거리로 물러남 (방금 본 카드 쪽으로 살짝 치우친 채)
+        base.z = Math.min(1, W / 1500);          // 처음 시작할 때의 확대 정도
+        FILMS.forEach(g => g.k = null);          // 확대 정도가 바뀌었으니 끌림 계산을 다시 하게
+        const k = pullAmount(f);
+        base.x = f.x * k;
+        base.y = f.y * k;
+}
+
+// ★ 영상 완전히 멈추기
+function stopVideo(){
+        panelVideo.pause();
+        panelVideo.removeAttribute("src");
+        panelVideo.load();
+}
+
+// 상세 화면에서 다른 영화로 이동
+function jump(id){
+        closePanel();
+        setTimeout(() => flyTo(film[id]), 650);
+}
+
+
+/* ============================================================
+   8. 입력 — 호버로 균사 돋우기, 누른 채 끌어서 균사 잇기, 휠 확대
+   ============================================================ */
+
+world.addEventListener("pointerdown", e => {
+        if(openFilm) return;
+        mouse.x = e.clientX; mouse.y = e.clientY;
+        press = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, ok: false };
+        press.ok = pullToward(e.clientX, e.clientY);
+        hint.style.opacity = 0;
+});
+
+window.addEventListener("pointermove", e => {
+        mouse.x = e.clientX; mouse.y = e.clientY;
+        if(!press) return;
+        if(!press.moved && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 5){
+                press.moved = true;
+                world.classList.add("drag");
+        }
+        if(Math.hypot(e.clientX - press.lx, e.clientY - press.ly) > 14){
+                press.ok = pullToward(e.clientX, e.clientY);
+                press.lx = e.clientX; press.ly = e.clientY;
+        }
+});
+
+window.addEventListener("pointerup", () => {
+        world.classList.remove("drag");
+        setTimeout(() => { press = null; }, 0);
+});
+
+// 휠 확대 — 커서 아래의 깊이까지 계산해서, 확대해도 커서 아래 있던 지점이 그대로 남음
+world.addEventListener("wheel", e => {
+        if(openFilm) return;
+        e.preventDefault();
+        const z1 = Math.max(0.4, Math.min(2.2, base.z * Math.exp(-e.deltaY * 0.0012)));
+        const d = depthAt(e.clientX, e.clientY);            // 커서 아래의 깊이
+        const p = toWorld(e.clientX, e.clientY, d);         // 지금 커서 아래 있는 월드 좌표
+        const ox = (e.clientX - W / 2 + drift.x * d) / d;
+        const oy = (e.clientY - H / 2 + drift.y * d) / d;
+        base.x = p.x - ox / z1;                             // 확대 후에도 그 점이 커서 아래 오도록
+        base.y = p.y - oy / z1;
+        base.z = z1;
+        FILMS.forEach(f => f.k = null);
+}, { passive: false });
+
+// ★ 영상: 유튜브로 넘어갈 때 여기 영상은 일시정지 (소리 겹침 방지)
+panelLink.addEventListener("click", () => {
+        panelVideo.pause();
+});
+
+window.addEventListener("keydown", e => { if(e.key == "Escape") closePanel(); });
+
+window.addEventListener("resize", resize);
+
+function resize(){
+        W = innerWidth; H = innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        FILMS.forEach(f => f.k = null);
+}
+
+
+/* ============================================================
+   9. 범례 / 다시 시작
+   ============================================================ */
+
+function updateLegend(){
+        const found = FILMS.filter(f => f.found).length;
+        legend.innerHTML = "<div class='row'><span class='sw'></span>" + TECH.ko + "<span class='n'>" + found + " / " + FILMS.length + "</span></div>";
+}
+
+function restart(){
+        closePanel();
+        paths = []; tips = []; pointCount = 0;
+        FILMS.forEach(f => {
+                f.found = false;
+                f.owned = [];
+                f.el.classList.remove("found");
+                f.mctx.clearRect(0, 0, f.mw, f.mh);
+                f.rctx.clearRect(0, 0, f.rev.width, f.rev.height);
+                setFocus(f);
+        });
+        discover(film.monster);
+        hovered = null;
+        fly = null;
+        base = { x: 0, y: 0, z: Math.min(1, W / 1500) };
+        cam = { x: base.x, y: base.y, z: base.z * 0.85 };
+        hint.style.opacity = 1;
+        updateLegend();
+}
+
+
+/* ============================================================
+   10. 반복 / 시작
+   ============================================================ */
+
+function loop(){
+        frame++;
+        updateCamera();
+        placeFilms();
+        if(hovered && hovered.found && !press && !fly && !openFilm && frame % HYPHA.hoverRate == 0){ sproutFrom(hovered); }
+        growTips();
+        trimPaths();
+        drawHyphae();
+        updateReveals();
+        requestAnimationFrame(loop);
+}
+
+resize();
+buildFilms();
+restart();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
